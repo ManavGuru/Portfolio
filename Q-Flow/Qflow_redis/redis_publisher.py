@@ -22,35 +22,37 @@ previous_run_id = "1"
 ignore_flag = 1
 current_run_id = []
 reward_list = []
+a_no = 0
 while True:
 	table_name = "state_action_table:"
 	# read state from clients, write to DB
 	message = p_sub.get_message()
 	if (message):
-		current_run_id = str(message['data'])
+		current_run_id = int((message['data']))
+		previous_run_id = current_run_id - 1
+		print("run_id:",current_run_id)
 		if(int(current_run_id) == -22):
 			break
-		print("run_id:",current_run_id)
-	if(current_run_id == previous_run_id):
-		pass
-	else:
-		if (ignore_flag): 
-			ignore_flag = 0
-			print(ignore_flag)
 		else:
-			action_to_take = actions[random.randint(0,14)]
-			SAt = {"action": str(action_to_take)}
-			table_name += current_run_id
-			previous_run_id = current_run_id
-			print(table_name, SAt)
-			redis_db.hmset(table_name, SAt)
-			temp =(redis_db.hmget(table_name, "reward"))
-			if((temp[0] is None)):
-				print(temp)
+			table_name += str(previous_run_id)
+			temp =(redis_db.hget(table_name, "reward"))
+			state =(redis_db.hget(table_name, "state"))
+			print("State: {0}\nReward: {1}".format(state, temp))
+			if((temp is None)):
+				print('')
 			else:
-				reward_list.append(float(temp[0]))
-# print("Rewards are: ",reward_list)
-# print("avg_qoe: {}".format(sum(reward_list)/len(reward_list)))
+				reward_list.append(float(temp))
+			table_name = "state_action_table:"
+			table_name += str(current_run_id)
+			action_to_take = actions[a_no]
+			a_no += 1 
+			if(a_no == 15):
+				a_no = 0
+			SAt = {"action": str(action_to_take)}
+			print(action_to_take)
+			redis_db.hmset(table_name, SAt)
+print("Rewards are: ",reward_list)
+print("avg_qoe: {}".format(sum(reward_list)/len(reward_list)))
 plt.title('Rewards')
 plt.xlabel('Time')
 plt.ylabel('Reward')

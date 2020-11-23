@@ -3,7 +3,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-from virtual.virtual_env_client import Queue, Client
+from virtual.virtual_env_client import Queue, Client,run_client
 
 import redis
 import time
@@ -34,13 +34,15 @@ actions = [
 def string2action (action_in): 
     new_action = [int(i) for i in action_in if i.isdigit()]
     return new_action
+client_env = run_client(queues, clients)
 
-no_of_runs = 102
+no_of_runs = 1000
 for run_id in range (2,no_of_runs):
     table_name = "state_action_table:"
     table_name += str(run_id-1)
     if(run_id == 2): 
         action = actions[random.randint(0,14)]
+        print("Action:",action)
     else:
         curr_state_action = redis_db.hmget(table_name, "action")
         # print("Current action to take",curr_state_action[-1])
@@ -53,19 +55,14 @@ for run_id in range (2,no_of_runs):
         action = string2action(curr_state_action[-1])
         # print("Taking this action:",action)
     reward = 0
-    states = [[0,0,0] for _ in range(n_clients)]
+    states, reward, _, _ = client_env.step(action)
     # setting the queues 
-    for i,q in enumerate(queues): 
-        c_set = np.where(np.array(action) == i)[0]
-        s,r,_,_ = q.step(10, [clients[c] for c in c_set])
-    for j,c in enumerate(c_set): 
-        states[c] = s[j]
-    reward += r
-    print("State:{0} Reward:{1}".format(states, reward/6))  
-    write_redis = {"run_id":run_id,"state": str(states), "action": str(action), "reward": reward/6}
-    redis_db.hmset(table_name,write_redis)
+    print("State:{0} Reward:{1}".format(states, reward))  
+    write_redis = {"run_id":run_id,"state": str(states), "action": str(action), "reward": reward}
+    redis_db.hmset(table_name, write_redis)
     redis_db.sadd("master_table", run_id)
     print("publishing current_run:", run_id)
     redis_db.publish("latest_run", run_id)
     time.sleep(0.1)
+
 redis_db.publish("latest_run",-22)

@@ -6,8 +6,8 @@ from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 
 
-SENDER_EMAIL = 'automaticmailer6@gmail.com'
-SENDER_PASSWORD = '#2134@TAMU'
+SENDER_EMAIL = ''
+SENDER_PASSWORD = ''
 # file = codecs.open ('c_h_template.html', 'r', 'utf-8')
 
 body =  '<html><body>'  

@@ -3,7 +3,9 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_ST7735.h> 
-
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
+#include <WiFiManager.h> 
 #include <ESP8266WiFi.h>
 #include "HTTPSRedirect.h"
 #include "DebugMacros.h"
@@ -13,6 +15,7 @@
 #include <Timezone.h>
 #include <WifiUDP.h>
 #include <NTPClient.h>
+#include <CapacitiveSensor.h>
 
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
@@ -23,9 +26,6 @@
 // extern const char* host;
 // extern const char *GScriptId;
 
-const char* ssid = "ath-sjc";
-const char* password = "#2134@sjc6918";
-
 const char* host = "script.google.com";
 const char *GScriptId = "AKfycbwJhzysQyX0LskwxihYPwX0KDFrhbmbX6UXFfMbEqRBYOB9OrXQiKrg_R2uK8pR-6k";
 
@@ -33,6 +33,8 @@ extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
 extern  unsigned char  wind[];
 
+//Touch sensor
+// CapacitiveSensor   poke_button = CapacitiveSensor(9,10);
 
 //GScript APIs
 String url_read = String("/macros/s/") + GScriptId + "/exec?read";
@@ -68,6 +70,7 @@ const char * months[] = {"Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug
 const char * ampm[] = {"AM", "PM"} ;
 
 bool scroll = false;
+
 void getTime(){
     date = "";  // clear the variables
     t = "";
@@ -106,9 +109,9 @@ void getTime(){
 
 void blink_led(int pin= LED_BUILTIN){
     digitalWrite(pin, HIGH);
-    delay(20);
+    delay(200);
     digitalWrite(pin, LOW);
-    delay(30);
+    delay(300);
 }
 
 bool willStringfit(const String buf, int x, int y, int w, int h)
@@ -220,6 +223,7 @@ void jimmy_alert(){
   tft.setCursor(tft.width()/2+2, 3*tft.height()/5+25);
   tft.println("SJC:");
 }
+
 void message_Widget() {
   //create messenger_widget
   tft.drawLine(0, tft.height()/5 , tft.width(), tft.height()/5, ST77XX_BLACK);
@@ -232,19 +236,28 @@ void poke_Widget() {
   tft.fillRect(0, 2.5*tft.height()/5+1, tft.width(), tft.height()/10, ST77XX_ORANGE);
   tft.drawLine(0, 3*tft.height()/5 , tft.width(), 3*tft.height()/5, ST77XX_WHITE);
   }
-void poke_Event(){
-    tft.fillRect(0, 2.5*tft.height()/5+1, tft.width(), tft.height()/10, ST77XX_ORANGE);
+
+void poke_Event(bool reply = false){
     //if incoming poke change to green
     tft.fillRect(0, 2.5*tft.height()/5+1, tft.width(), tft.height()/10, ST77XX_GREEN);
-    tft.setCursor(tft.height()/5+2, tft.width()/5);
-    tft.println("YOU HAVE BEEN POKED :P");
+    tft.setCursor(2,85);
+    tft.setTextColor(ST77XX_BLACK, ST77XX_GREEN);
+    tft.println("YOU'VE BEEN POKED :P");
     //if outgoing change to sending poke animation 
+    if(reply){
+    tft.fillRect(0, 2.5*tft.height()/5+1, tft.width(), tft.height()/10, ST77XX_ORANGE);
+    tft.setCursor(2,85);
+    tft.setTextColor(ST77XX_BLACK, ST77XX_ORANGE);
+    tft.println("SENDING A POKE BACK xD");
+    delay(2000);
+    }
 }
-
+int poke_button = 0; 
 
 void setup() {
   //display setup
   pinMode(LED_BUILTIN, OUTPUT); //poke status led
+  pinMode(16, INPUT_PULLDOWN_16); // declare push button as input
   tft.initR(INITR_BLACKTAB);
   delay(2000);
   tft.fillScreen(ST77XX_BLACK);
@@ -252,30 +265,26 @@ void setup() {
   tft.setCursor(0, 0);
   
   // Display static text
-  tft.print("Hello :)"); 
-  delay(2000);
   tft.setCursor(0, 0);    //Horiz/Vertic
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE);
-
+  tft.print("Hi da, Connect to ConfigureWifi from your phone and setup Wifi :)");
+  WiFiManager wifiManager;
+  wifiManager.autoConnect("ConfigureWifi");
   //WIFI connection
-  tft.print("Connecting to:");
-  tft.print(ssid);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    tft.print(".");
-    blink_led();
-  }
-  
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextWrap(true);
+  tft.setCursor(0, 0); 
+  tft.print("Connecting to the internet, setting up widgets");
+  delay(4000);
   tft.fillScreen(ST77XX_BLACK);
   tft.setTextWrap(true);
   tft.setCursor(0, 0);    //Horiz/Vertic
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE);
-  tft.print(WiFi.localIP());
-  tft.fillScreen(ST77XX_BLACK);
+  tft.print("Hello :)"); 
+  delay(2000);;
+
   //create widgets
   date_time_Widget(); //top widget for date and time
   message_Widget();
@@ -287,19 +296,26 @@ int data_loop = 5; //to fetch data periodically
 bool poke_status = true;
 
 void loop(){
+  poke_button = digitalRead(16);
   display_time();
   if(data_loop == 5){
     get_data();
     data_loop = 0;
     poke_Event();
-    poke_status = !poke_status;
+    blink_led();
   }
   data_loop++;
   if(scroll)
     process_data(current_data);
 
-  if (poke_status) {
-    blink_led();
-    digitalWrite(LED_BUILTIN, LOW);
-  }
+  // if (poke_status) {
+  //   blink_led();
+  //   digitalWrite(LED_BUILTIN, LOW);
+  // }
+  poke_status = !poke_status;    
+     if (poke_button == HIGH) {
+        digitalWrite(LED_BUILTIN, LOW);
+        poke_Event(true);
+       }
+  poke_button = digitalRead(16);
 }

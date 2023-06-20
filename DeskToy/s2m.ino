@@ -1,10 +1,6 @@
-#include <SPI.h>
-#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_ST7735.h> 
-#include <DNSServer.h>
-#include <ESP8266WebServer.h>
 #include <WiFiManager.h> 
 #include <ESP8266WiFi.h>
 #include "HTTPSRedirect.h"
@@ -14,33 +10,30 @@
 #include <TimeLib.h>
 #include <Timezone.h>
 #include <WifiUDP.h>
-#include <NTPClient.h>
-#include <CapacitiveSensor.h>
 
-
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-//Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
-// extern const char* ssid;
-// extern const char* password;
-// extern const char* host;
-// extern const char *GScriptId;
-
+//host server
 const char* host = "script.google.com";
-const char *GScriptId = "AKfycbwJhzysQyX0LskwxihYPwX0KDFrhbmbX6UXFfMbEqRBYOB9OrXQiKrg_R2uK8pR-6k";
+const char *GScriptId = "AKfycbxKAaekPVHQYyC3ZawrfBqyl6isiUH_KxwzppJqQW5GxNZ9oK4CXUfFVUwaeS3xgVY";
+
+//response server
+String BlrWeather = "https://api.openweathermap.org/data/2.5/forecast?q=Bangalore,in&APPID=0c40676db9bcb51086ea89239551ca2b&units=metric&cnt=2"; 
+String SjcWeather = "https://api.openweathermap.org/data/2.5/forecast?q=San%20Jose,us&APPID=0c40676db9bcb51086ea89239551ca2b&units=metric&cnt=2";
 
 extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
 extern  unsigned char  wind[];
 
-//Touch sensor
-// CapacitiveSensor   poke_button = CapacitiveSensor(9,10);
+bool poke_status = false; // status variable to trigger LED notification
 
 //GScript APIs
 String url_read = String("/macros/s/") + GScriptId + "/exec?read";
 String url_write = String("/macros/s/") + GScriptId + "/exec?write";
+String url_pokeStatus = String("/macros/s/") + GScriptId + "/exec?pStatus";
+String url_unpoke = String("/macros/s/") + GScriptId + "/exec?unpoke";
 const uint16_t httpsPort = 443;
 String current_data = "";
+
+enum APIS {READ, WRITE, POKESTATUS, POKE, UNPOKE};
 
 // Use WiFiClient class to create TCP connections
 HTTPSRedirect* client = nullptr;
@@ -113,7 +106,30 @@ void blink_led(int pin= LED_BUILTIN){
     digitalWrite(pin, LOW);
     delay(300);
 }
+void breathe_led(int pin= LED_BUILTIN){
+  float smoothness_pts = 500;//larger=slower change in brightness  
+  float gamma = 0.14; // affects the width of peak (more or less darkness)
+  float beta = 0.5; // shifts the gaussian to be symmetric
 
+  for (int ii=0;ii<smoothness_pts;ii++){
+    float pwm_val = 255.0*(exp(-(pow(((ii/smoothness_pts)-beta)/gamma,2.0))/2.0));
+    analogWrite(LED_BUILTIN,int(pwm_val));
+    delay(5);
+  }
+}
+
+String remove_Spaces(String inputString){
+  int i, j;
+  for(j = -1, i = 0; inputString[i] != '\0'; i++) {
+    if((inputString[i]>='a' && inputString[i]<='z') || 
+    (inputString[i]>='A' && inputString[i]<='Z')) {
+        inputString[++j] = inputString[i];
+      }
+    }
+    inputString[j] = '\0';
+
+    return inputString;
+}
 bool willStringfit(const String buf, int x, int y, int w, int h)
 {
     int16_t x1, y1;
@@ -147,7 +163,7 @@ void scrolltext(int x, int y, String s, uint8_t dw = 1, const GFXfont *f = NULL,
         tft.setCursor(x, y);
         tft.print(s);
         if (f == NULL) tft.print("  "); //rubout trailing chars
-        delay(2);
+        delay(1);
     }
 }
 
@@ -168,28 +184,6 @@ void process_data(String data){
         tft.setCursor(0, 40);    //Horiz/Vertic
         scrolltext(0,40,data);
       }
-}
-
-void get_data(){
- static bool flag = false; 
- client = new HTTPSRedirect(httpsPort);
- client->setInsecure();
- client->setPrintResponseBody(true);
- client->setContentTypeHeader("application/json");
- 
- if (client != nullptr){
-  if(!client->connected()){
-    client->connect(host, httpsPort);
-    client->GET(url_read, host);
-    result = client->getResponseBody();
-    if(result != current_data){
-        process_data(result);
-        current_data = result;
-      }
-    }
-  }
-  delete client;
-  client = nullptr;
 }
 
 void display_time(){
@@ -243,17 +237,65 @@ void poke_Event(bool reply = false){
     tft.setCursor(2,85);
     tft.setTextColor(ST77XX_BLACK, ST77XX_GREEN);
     tft.println("YOU'VE BEEN POKED :P");
+    poke_status = true;
     //if outgoing change to sending poke animation 
     if(reply){
     tft.fillRect(0, 2.5*tft.height()/5+1, tft.width(), tft.height()/10, ST77XX_ORANGE);
-    tft.setCursor(2,85);
+    tft.setCursor(20,85);
     tft.setTextColor(ST77XX_BLACK, ST77XX_ORANGE);
-    tft.println("SENDING A POKE BACK xD");
-    delay(2000);
+    tft.println("POKED BACK xD");
+    blink_led();
+    poke_status = false;
     }
 }
-int poke_button = 0; 
 
+void get_data(int api){
+ static bool flag = false; 
+ client = new HTTPSRedirect(httpsPort);
+ client->setInsecure();
+ client->setPrintResponseBody(true);
+ client->setContentTypeHeader("application/json");
+ if (client != nullptr){
+  if(!client->connected()){
+    client->connect(host, httpsPort);
+    switch (api){
+      case READ:
+        client->GET(url_read, host);
+        result = client->getResponseBody();
+        if(result != current_data){
+          process_data(result);
+          current_data = result;
+        break;
+      case WRITE:
+        break;
+      case POKESTATUS:
+        client->GET(url_pokeStatus, host);
+        result = client->getResponseBody();
+        if(result.indexOf("poke") != -1){
+          poke_Event();    
+          // digitalWrite(2, HIGH)
+        }
+        break;
+      case UNPOKE:
+        client->GET(url_unpoke, host);
+        result = client->getResponseBody();
+        if(result.indexOf("Written on column D") != -1){
+          ;//poke back here?    
+          // digitalWrite(2, HIGH)
+        }
+        break;
+      default:
+        break;
+      }
+    }
+
+    }
+  }
+  delete client;
+  client = nullptr;
+}
+
+int poke_button = 0; 
 void setup() {
   //display setup
   pinMode(LED_BUILTIN, OUTPUT); //poke status led
@@ -263,7 +305,7 @@ void setup() {
   tft.fillScreen(ST77XX_BLACK);
   tft.setTextColor(WHITE);
   tft.setCursor(0, 0);
-  
+  Serial.begin(115200);
   // Display static text
   tft.setCursor(0, 0);    //Horiz/Vertic
   tft.setTextSize(1);
@@ -283,7 +325,7 @@ void setup() {
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE);
   tft.print("Hello :)"); 
-  delay(2000);;
+  delay(2000);
 
   //create widgets
   date_time_Widget(); //top widget for date and time
@@ -293,29 +335,27 @@ void setup() {
 }
 
 int data_loop = 5; //to fetch data periodically 
-bool poke_status = true;
 
 void loop(){
   poke_button = digitalRead(16);
   display_time();
-  if(data_loop == 5){
-    get_data();
+    if(scroll){
+    process_data(current_data);
+  }
+  if (poke_status){
+    breathe_led(); //notification that a poke has occured
+  }
+  if (poke_button == HIGH) {
+    poke_Event(true);
+    get_data(UNPOKE);
+    }
+  if(data_loop == 15){
+    get_data(READ); 
+    get_data(POKESTATUS);
     data_loop = 0;
-    poke_Event();
-    blink_led();
+    //if pStatus == Poke
+    //Trigger poke event
+    //set Unpoke
   }
   data_loop++;
-  if(scroll)
-    process_data(current_data);
-
-  // if (poke_status) {
-  //   blink_led();
-  //   digitalWrite(LED_BUILTIN, LOW);
-  // }
-  poke_status = !poke_status;    
-     if (poke_button == HIGH) {
-        digitalWrite(LED_BUILTIN, LOW);
-        poke_Event(true);
-       }
-  poke_button = digitalRead(16);
 }

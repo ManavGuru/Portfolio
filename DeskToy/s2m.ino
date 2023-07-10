@@ -23,7 +23,7 @@
 
 //host server
 const char* host = "script.google.com";
-const char *GScriptId = "AKfycbxKAaekPVHQYyC3ZawrfBqyl6isiUH_KxwzppJqQW5GxNZ9oK4CXUfFVUwaeS3xgVY";
+const char *GScriptId = "<>";
 
 extern  unsigned char  cloud[];
 extern  unsigned char  thunder[];
@@ -44,10 +44,7 @@ enum APIS {READ, WRITE, POKESTATUS, POKE, UNPOKE};
 
 //response 
 const char server[] = "https://api.openweathermap.org/";
-
-//  "data/2.5/forecast?q=Bangalore,in&APPID=0c40676db9bcb51086ea89239551ca2b&units=metric&cnt=2"; 
-// String SjcWeather = "data/2.5/forecast?q=San%20Jose,us&APPID=0c40676db9bcb51086ea89239551ca2b&units=metric&cnt=2";
-String apiKey = "91343e3f6af3910f20db5c6181661994";
+String apiKey = "<>";
 
 enum cities {BLR, SJC};
 String sjc_weather_icon, blr_weather_icon;
